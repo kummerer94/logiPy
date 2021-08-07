@@ -3,10 +3,10 @@ import os
 import platform
 from enum import Enum, auto
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
-from color import Color
-from keys import *
+from .color import Color
+from .keys import *
 
 LOGI_LED_BITMAP_WIDTH = 21
 LOGI_LED_BITMAP_HEIGHT = 6
@@ -37,32 +37,6 @@ class SDKNotFoundException(Exception):
     pass
 
 
-def load_dll(path_dll=None):
-    if not path_dll:
-        bitness = "x86" if platform.architecture()[0] == "32bit" else "x64"
-        subpath_dll = Path(f"/Logitech Gaming Software/SDK/LED/{bitness}/LogitechLed.dll")
-
-        # It is best to use ProgramW6432: https://stackoverflow.com/a/51305013
-        try:
-            subpath_lgs = os.environ["ProgramW6432"]
-        except KeyError:
-            subpath_lgs = os.environ["ProgramFiles"]
-        path_dll = Path(subpath_lgs) / subpath_dll
-    else:
-        path_dll = Path(path_dll)
-
-    if path_dll.exists():
-        return ctypes.cdll.LoadLibrary(str(path_dll))
-    else:
-        raise SDKNotFoundException(f"The SDK DLL was not found at {path_dll}")
-
-
-try:
-    led_dll = load_dll()
-except SDKNotFoundException as exception_sdk:
-    led_dll = None
-
-
 class KeyType(Enum):
     scan = auto()
     hid = auto()
@@ -74,14 +48,19 @@ class LEDService:
     """Service implementation for the LED API."""
 
     dll: ctypes.CDLL
+    use_legacy_dll: bool = True
 
-    def __init__(self, path_dll: Union[str, Path, None] = None) -> None:
+    def __init__(
+        self, path_dll: Union[str, Path, None] = None, use_legacy_dll: bool = True
+    ) -> None:
         """Initializes the LED service and loads the necessary DLL.
 
         Parameters
         ----------
         path_dll : Union[str, Path], optional
             The path to the DLL, if None will try to find the DLL automatically.
+        use_legacy_dll : bool, optional
+            Use the legacy DLL included in the Logitech G Hub.
 
         Raises
         ------
@@ -89,7 +68,8 @@ class LEDService:
             If the SDK DLL is not found.
 
         """
-        self.dll = load_dll(path_dll=path_dll)
+        self.dll = self.load_dll(path_dll=path_dll)
+        self.use_legacy_dll = use_legacy_dll
 
     def start(self) -> bool:
         """Initialize the LED API. This is a necessary step if you want to work with the API."""
@@ -97,15 +77,39 @@ class LEDService:
 
     def shutdown(self):
         """Shutdown the SDK for the thread."""
-        return bool(self.led.LogiLedShutdown())
+        return bool(self.dll.LogiLedShutdown())
 
-    def __enter__(self):
+    def __enter__(self) -> "LEDService":
         """Context manager adaption."""
         self.start()
+        return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, type, value, traceback) -> None:
         """Context manager adaption."""
         self.shutdown()
+
+    def load_dll(self, path_dll: Optional[Union[str, Path]] = None) -> ctypes.CDLL:
+        """Load the DLL."""
+        if not path_dll:
+            bitness = "x86" if platform.architecture()[0] == "32bit" else "x64"
+            if self.use_legacy_dll:
+                subpath_dll = f"LGHUB/sdk_legacy_led_{bitness}.dll"
+            else:
+                subpath_dll = Path(f"/Logitech Gaming Software/SDK/LED/{bitness}/LogitechLed.dll")
+
+            # It is best to use ProgramW6432: https://stackoverflow.com/a/51305013
+            try:
+                subpath_lgs = os.environ["ProgramW6432"]
+            except KeyError:
+                subpath_lgs = os.environ["ProgramFiles"]
+            path_dll = Path(subpath_lgs) / subpath_dll
+        else:
+            path_dll = Path(path_dll)
+
+        if path_dll.exists():
+            return ctypes.cdll.LoadLibrary(str(path_dll))
+        else:
+            raise SDKNotFoundException(f"The SDK DLL was not found at {path_dll}")
 
     def set_target_device(self, target_device: int) -> bool:
         """Set the target device or device group that is affected by subsequent lighting calls.
@@ -442,7 +446,7 @@ class LEDService:
         """
         key = ctypes.c_wchar_p(key)
         default = ctypes.c_couble(default)
-        if self.led.LogiGetConfigOptionNumber(key, ctypes.pointer(default), _LOGI_SHARED_SDK_LED):
+        if self.dll.LogiGetConfigOptionNumber(key, ctypes.pointer(default), _LOGI_SHARED_SDK_LED):
             return default.value
         return None
 
@@ -465,7 +469,7 @@ class LEDService:
         """
         key = ctypes.c_wchar_p(key)
         default = ctypes.c_bool(default)
-        if self.led.LogiGetConfigOptionBool(key, ctypes.pointer(default), _LOGI_SHARED_SDK_LED):
+        if self.dll.LogiGetConfigOptionBool(key, ctypes.pointer(default), _LOGI_SHARED_SDK_LED):
             return default.value
         return None
 
