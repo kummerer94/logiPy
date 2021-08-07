@@ -3,7 +3,7 @@ import os
 import platform
 from enum import Enum, auto
 from pathlib import Path
-from typing import Union
+from typing import Optional, Tuple, Union
 
 from color import Color
 from keys import *
@@ -423,63 +423,83 @@ class LEDService:
         key_name = ctypes.c_int(key_name)
         return bool(self.dll.LogiLedStopEffectsOnKey(key_name))
 
+    def get_config_option_number(self, key: str, default: int = 0) -> Optional[float]:
+        """Get the default value for the configuration key as a float.
+        If the call fails, the return value is None.
 
-def logi_led_get_config_option_number(key, default=0):
-    """get the default value for the key as a number. if the call fails, the return value is None.
+        Parameters
+        ----------
+        key : str
+            The configuration key, like 'health/low_health_threshold'.
+        default : int, optional
+            The default value for the configuration, by default 0.
 
-    for example, get the low health threshold:
-     logi_led_get_config_option_number('health/low_health_threshold', 20.0)"""
-    if led_dll:
+        Returns
+        -------
+        Optional[float]
+            The value for the configuration key or if the call fails None.
+
+        """
         key = ctypes.c_wchar_p(key)
-        default = ctypes.c_double(default)
-        if led_dll.LogiGetConfigOptionNumber(key, ctypes.pointer(default), _LOGI_SHARED_SDK_LED):
+        default = ctypes.c_couble(default)
+        if self.led.LogiGetConfigOptionNumber(key, ctypes.pointer(default), _LOGI_SHARED_SDK_LED):
             return default.value
-    return None
+        return None
 
+    def get_config_option_bool(self, key: str, default: bool = False) -> Optional[bool]:
+        """Get the default value for the configuration key as a bool.
+        If the call fails, the return value is None.
 
-def logi_led_get_config_option_bool(key, default=False):
-    """get the default value for the key as a bool. if the call fails, the return value is None.
+        Parameters
+        ----------
+        key : str
+            The configuration key, like 'health/pulse_on_low'.
+        default : bool, optional
+            The default value for the configuration, by default False
 
-    for example, check if the effect is enabled:
-     logi_led_get_config_option_bool('health/pulse_on_low', True)"""
-    if led_dll:
+        Returns
+        -------
+        Optional[bool]
+            The value for the configuration key or if the call fails None.
+
+        """
         key = ctypes.c_wchar_p(key)
         default = ctypes.c_bool(default)
-        if led_dll.LogiGetConfigOptionBool(key, ctypes.pointer(default), _LOGI_SHARED_SDK_LED):
+        if self.led.LogiGetConfigOptionBool(key, ctypes.pointer(default), _LOGI_SHARED_SDK_LED):
             return default.value
-    return None
+        return None
 
+    def get_config_option_color(self, key: str, *args) -> Optional[Color]:
+        """Get the default value for the configuration key as a color.
+        If the call fails, the return value is None.
+        Note: you can either call this function with rgb percentage values or with a Color object.
 
-def logi_led_get_config_option_color(key, *args):
-    """get the default value for the key as a color. if the call fails, the return value is None.
-     note this function can either be called with red_percentage, green_percentage, and blue_percentage or with the logi_led Color object.
+        Parameters
+        ----------
+        key : str
+            The configuration key.
 
-    for example, get the low health color:
-     logi_led_get_config_option_color('health/pulse_color', 100, 0, 0)
-     logi_led_get_config_option_color('health/pulse_color', Color('red'))
-     logi_led_get_config_option_color('health/pulse_color', Color('#ff0000'))
-     logi_led_get_config_option_color('health/pulse_color', Color(255, 0, 0))"""
-    if led_dll:
+        Returns
+        -------
+        Optional[Color]
+            The color for the configuration key or if the call fails None.
+
+        """
         key = ctypes.c_wchar_p(key)
         default = None
-        red_percentage = 0
-        green_percentage = 0
-        blue_percentage = 0
+        red, green, blue = 0, 0, 0
         if isinstance(args[0], Color):
             default = args[0]
-        else:
-            red_percentage = args[0]
-            green_percentage = args[1]
-            blue_percentage = args[2]
-        if default:
             red = ctypes.c_int(default.red)
             green = ctypes.c_int(default.green)
             blue = ctypes.c_int(default.blue)
         else:
-            red = ctypes.c_int(int((red_percentage / 100.0) * 255))
-            green = ctypes.c_int(int((green_percentage / 100.0) * 255))
-            blue = ctypes.c_int(int((blue_percentage / 100.0) * 255))
-        if led_dll.LogiGetConfigOptionColor(
+            red_pct, green_pct, blue_pct = args[0], args[1], args[2]
+            red = ctypes.c_int(int((red_pct / 100) * 255))
+            green = ctypes.c_int(int((green_pct / 100) * 255))
+            blue = ctypes.c_int(int((blue_pct / 100) * 255))
+
+        if self.dll.LogiGetConfigOptionColor(
             key,
             ctypes.pointer(red),
             ctypes.pointer(green),
@@ -487,32 +507,57 @@ def logi_led_get_config_option_color(key, *args):
             _LOGI_SHARED_SDK_LED,
         ):
             return Color(red.value, green.value, blue.value)
-    return None
+        return None
 
+    def get_config_option_key_input(self, key: str, default: str = "") -> Optional[str]:
+        """Get the default value for the key as a input key.
+        If the call fails, the return value is None.
 
-def logi_led_get_config_option_key_input(key, default=""):
-    """get the default value for the key as a key input. if the call fails, the return value is None.
+        Parameters
+        ----------
+        key : str
+            The configuration key, e.g. 'abilities/primary'.
+        default : str, optional
+            The default value for this configuration key, by default "".
 
-    for example, get the primary ability key input:
-     logi_led_get_config_option_key_input('abilities/primary', 'A')"""
-    if led_dll:
+        Returns
+        -------
+        Optional[str]
+            The value for the configuration key or if the call fails None.
+
+        Examples
+        --------
+        self.get_config_option_key_input('abilities/primary', 'A')
+
+        """
         key = ctypes.c_wchar_p(key)
         default_key = ctypes.create_string_buffer(256)
         default_key.value = default
-        if led_dll.LogiGetConfigOptionKeyInput(key, default_key, _LOGI_SHARED_SDK_LED):
+        if self.dll.LogiGetConfigOptionKeyInput(key, default_key, _LOGI_SHARED_SDK_LED):
             return str(default_key.value)
-    return None
+        return None
 
+    def set_config_option_label(self, key: str, label: str) -> bool:
+        """Set the label for a configuration key.
 
-def logi_led_set_config_option_label(key, label):
-    """set the label for a key.
+        Parameters
+        ----------
+        key : str
+            The configuration key.
+        label : str
+            The configuration label.
 
-    for example, label 'health/pulse_on_low' as 'Health - Pulse on Low':
-     logi_led_set_config_option_label('health', 'Health')
-     logi_led_set_config_option_label('health/pulse_on_low', 'Pulse on Low')"""
-    if led_dll:
+        Returns
+        -------
+        bool
+            Whether or not the configuration setting succeeded.
+
+        Examples
+        --------
+        self.set_config_option_label('health', 'Health')
+        self.set_config_option_label('health/pulse_on_low', 'Pulse on Low')
+
+        """
         key = ctypes.c_wchar_p(key)
         label = ctypes.c_wchar_p(label)
-        return bool(led_dll.LogiSetConfigOptionLabel(key, label, _LOGI_SHARED_SDK_LED))
-    else:
-        return False
+        return bool(self.dll.LogiSetConfigOptionLabel(key, label, _LOGI_SHARED_SDK_LED))
