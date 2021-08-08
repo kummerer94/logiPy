@@ -113,3 +113,29 @@ G_8 = 0xFFF8
 G_9 = 0xFFF9
 G_LOGO = 0xFFFF1
 G_BADGE = 0xFFFF2
+
+
+def key(k: str) -> int:
+    """Get a key by a given name.
+
+    Parameters
+    ----------
+    k : str
+        The name of the key, like "A" or "a" but also "G_1" for G-Keys.
+
+    Returns
+    -------
+    int
+        The integer representing this key.
+
+    Raises
+    ------
+    KeyError
+        When there is no such key.
+
+    """
+    k = k.upper()
+    if k in globals():
+        return globals()[k]
+    else:
+        raise KeyError(f"No such key exists for key {k}.")
