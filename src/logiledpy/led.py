@@ -1,6 +1,7 @@
 import ctypes
 import os
 import platform
+import time
 from enum import Enum, auto
 from pathlib import Path
 from typing import Optional, Union
@@ -15,19 +16,6 @@ LOGI_LED_BITMAP_BYTES_PER_KEY = 4
 LOGI_LED_BITMAP_SIZE = (
     LOGI_LED_BITMAP_WIDTH * LOGI_LED_BITMAP_HEIGHT * LOGI_LED_BITMAP_BYTES_PER_KEY
 )
-
-LOGI_LED_DURATION_INFINITE = 0
-
-LOGI_DEVICETYPE_MONOCHROME_ORD = 0
-LOGI_DEVICETYPE_RGB_ORD = 1
-LOGI_DEVICETYPE_PERKEY_RGB_ORD = 2
-
-LOGI_DEVICETYPE_MONOCHROME = 1 << LOGI_DEVICETYPE_MONOCHROME_ORD
-LOGI_DEVICETYPE_RGB = 1 << LOGI_DEVICETYPE_RGB_ORD
-LOGI_DEVICETYPE_PERKEY_RGB = 1 << LOGI_DEVICETYPE_PERKEY_RGB_ORD
-
-LOGI_DEVICETYPE_ALL = LOGI_DEVICETYPE_MONOCHROME | LOGI_DEVICETYPE_RGB | LOGI_DEVICETYPE_PERKEY_RGB
-
 
 # Required Globals
 _LOGI_SHARED_SDK_LED = ctypes.c_int(1)
@@ -44,14 +32,30 @@ class KeyType(Enum):
     name = auto()
 
 
+LOGI_DEVICETYPE_MONOCHROME_ORD = 0
+LOGI_DEVICETYPE_RGB_ORD = 1
+LOGI_DEVICETYPE_PERKEY_RGB_ORD = 2
+
+
+class DeviceType(Enum):
+    monochrome = 1 << LOGI_DEVICETYPE_MONOCHROME_ORD
+    rgb = 1 << LOGI_DEVICETYPE_RGB_ORD
+    perkey_rgb = 1 << LOGI_DEVICETYPE_PERKEY_RGB_ORD
+    all = monochrome | rgb | perkey_rgb
+
+
 class LEDService:
     """Service implementation for the LED API."""
 
     dll: ctypes.CDLL
     use_legacy_dll: bool = True
+    wait_for_sdk_initialization: bool = True
 
     def __init__(
-        self, path_dll: Union[str, Path, None] = None, use_legacy_dll: bool = True
+        self,
+        path_dll: Union[str, Path, None] = None,
+        use_legacy_dll: bool = True,
+        wait_for_sdk_initialization: bool = True,
     ) -> None:
         """Initializes the LED service and loads the necessary DLL.
 
@@ -61,6 +65,8 @@ class LEDService:
             The path to the DLL, if None will try to find the DLL automatically.
         use_legacy_dll : bool, optional
             Use the legacy DLL included in the Logitech G Hub.
+        wait_for_sdk_initialization : bool, optional
+            Wait for the SDK to initialize.
 
         Raises
         ------
@@ -68,12 +74,16 @@ class LEDService:
             If the SDK DLL is not found.
 
         """
-        self.dll = self.load_dll(path_dll=path_dll)
         self.use_legacy_dll = use_legacy_dll
+        self.wait_for_sdk_initialization = wait_for_sdk_initialization
+        self.dll = self.load_dll(path_dll=path_dll)
 
     def start(self) -> bool:
         """Initialize the LED API. This is a necessary step if you want to work with the API."""
-        return bool(self.dll.LogiLedInit())
+        init_result = bool(self.dll.LogiLedInit())
+        if init_result and self.wait_for_sdk_initialization:
+            time.sleep(1)
+        return init_result
 
     def shutdown(self):
         """Shutdown the SDK for the thread."""
@@ -111,12 +121,12 @@ class LEDService:
         else:
             raise SDKNotFoundException(f"The SDK DLL was not found at {path_dll}")
 
-    def set_target_device(self, target_device: int) -> bool:
+    def set_target_device(self, device: DeviceType) -> bool:
         """Set the target device or device group that is affected by subsequent lighting calls.
 
         Parameters
         ----------
-        target_device : int
+        device : DeviceType
             The target device or group.
 
         Returns
@@ -125,8 +135,7 @@ class LEDService:
             Whether or not the device action worked.
 
         """
-        target_device = ctypes.c_int(target_device)
-        return bool(self.dll.LogiLedSetTargetDevice(target_device))
+        return bool(self.dll.LogiLedSetTargetDevice(ctypes.c_int(device.value)))
 
     def save_current_lighting(self) -> bool:
         """Save the current lighting that can be restored later."""
@@ -259,7 +268,7 @@ class LEDService:
             KeyType.scan: self.dll.LogiLedSetLightingForKeyWithScanCode,
             KeyType.hid: self.dll.LogiLedSetLightingForKeyWithHidCode,
             KeyType.quartz: self.dll.LogiLedSetLightingForKeyWithQuartzCode,
-            KeyType.name: self.dll.LogiLedLightingForKeyWithKeyName,
+            KeyType.name: self.dll.LogiLedSetLightingForKeyWithKeyName,
         }
         try:
             set_lighting = type_to_key[key_type]
