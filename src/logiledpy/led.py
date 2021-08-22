@@ -202,6 +202,7 @@ class LEDService:
         -------
         bool
             Whether or not the pulse instruction succeeded.
+
         """
         red = ctypes.c_int(red)
         green = ctypes.c_int(green)
