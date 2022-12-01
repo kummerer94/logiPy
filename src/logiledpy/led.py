@@ -103,7 +103,7 @@ class LEDService:
         if not path_dll:
             bitness = "x86" if platform.architecture()[0] == "32bit" else "x64"
             if self.use_legacy_dll:
-                subpath_dll = f"LGHUB/sdk_legacy_led_{bitness}.dll"
+                subpath_dll = f"LGHUB/sdks/sdk_legacy_led_{bitness}.dll"
             else:
                 subpath_dll = Path(f"/Logitech Gaming Software/SDK/LED/{bitness}/LogitechLed.dll")
 
